@@ -3,11 +3,10 @@ from qtpy.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QComboBox, QLabel
                             QLineEdit, QFormLayout, QScrollArea)
 from qtpy.QtCore import Qt
 import requests
-import json
 import copick
 
 class CellCanvasWidget(QWidget):
-    def __init__(self, copick_config_path, hostname="localhost", port=8082, parent=None):
+    def __init__(self, copick_config_path="/Users/kharrington/Data/copick/cellcanvas_server/local_sshOverlay_localStatic.json", hostname="localhost", port=8082, parent=None):
         super().__init__(parent)
         self.setWindowTitle("CellCanvas Widget")
         self.hostname = hostname
@@ -49,10 +48,12 @@ class CellCanvasWidget(QWidget):
         self.update_solution_args()
 
     def populate_run_dropdown(self):
+        self.run_dropdown.clear()
         for run in self.root.runs:
             self.run_dropdown.addItem(run.meta.name)
 
     def populate_solution_dropdown(self):
+        self.solution_dropdown.clear()
         try:
             response = requests.get(f"http://{self.hostname}:{self.port}/index")
             if response.status_code == 200:
@@ -65,7 +66,10 @@ class CellCanvasWidget(QWidget):
     def update_solution_args(self):
         # Clear existing widgets
         for i in reversed(range(self.scroll_layout.count())): 
-            self.scroll_layout.itemAt(i).widget().setParent(None)
+            widget = self.scroll_layout.itemAt(i).widget()
+            if widget is not None:
+                widget.deleteLater()  # Ensures the widget is fully cleaned up
+                self.scroll_layout.removeWidget(widget)
         
         selected_run = self.run_dropdown.currentText()
         selected_solution = self.solution_dropdown.currentText()
@@ -74,7 +78,16 @@ class CellCanvasWidget(QWidget):
             return
 
         catalog, group, name, version = selected_solution.split(":")
-        
+
+        # Define the conditions for freeform parameters
+        freeform_conditions = {
+            "cellcanvas": {
+                "generate-pixel-embedding": ["embedding_name"],
+                "generate-tomogram": ["run_name"],
+                "generate-skimage-features": ["feature_type"],
+            }
+        }
+
         try:
             response = requests.get(f"http://{self.hostname}:{self.port}/info/{catalog}/{group}/{name}/{version}")
             if response.status_code == 200:
@@ -88,32 +101,41 @@ class CellCanvasWidget(QWidget):
                     
                     label = QLabel(arg_name)
                     
-                    if arg_name == 'run_name':
-                        field = QComboBox()
-                        for run in self.root.runs:
-                            field.addItem(run.meta.name)
-                        field.setCurrentText(selected_run)
-                    elif arg_name == 'voxel_spacing':
-                        field = QComboBox()
-                        run = self.root.get_run(selected_run)
-                        for voxel_spacing in run.voxel_spacings:
-                            field.addItem(str(voxel_spacing.meta.voxel_size))
-                    elif arg_name == 'tomo_type':
-                        field = QComboBox()
-                        run = self.root.get_run(selected_run)
-                        for tomogram in run.voxel_spacings[0].tomograms:
-                            field.addItem(tomogram.meta.tomo_type)
-                    elif arg_name in ['embedding_name', 'feature_type']:
-                        field = QComboBox()
-                        run = self.root.get_run(selected_run)
-                        for feature in run.features:
-                            field.addItem(feature.meta.name)
-                    elif arg_name == 'painting_segmentation_name':
-                        field = QLineEdit(default_value)
+                    # Check if the parameter should be freeform or dropdown
+                    if arg_name == 'copick_config_path':
+                        field = QLineEdit(str(self.copick_config_path))
+                    elif catalog in freeform_conditions and name in freeform_conditions[catalog] and arg_name in freeform_conditions[catalog][name]:
+                        field = QLineEdit(str(default_value))
                     else:
-                        field = QLineEdit(default_value)
+                        if arg_name == 'run_name':
+                            field = QComboBox()
+                            for run in self.root.runs:
+                                field.addItem(run.meta.name)
+                            field.setCurrentText(selected_run)
+                        elif arg_name == 'voxel_spacing':
+                            field = QComboBox()
+                            run = self.root.get_run(selected_run)
+                            for voxel_spacing in run.voxel_spacings:
+                                field.addItem(str(voxel_spacing.meta.voxel_size))
+                        elif arg_name == 'tomo_type':
+                            field = QComboBox()
+                            run = self.root.get_run(selected_run)
+                            for tomogram in run.voxel_spacings[0].tomograms:
+                                field.addItem(tomogram.meta.tomo_type)
+                        elif arg_name in ['embedding_name', 'feature_type']:
+                            field = QComboBox()
+                            run = self.root.get_run(selected_run)
+                            for voxel_spacing in run.voxel_spacings:
+                                for tomogram in voxel_spacing.tomograms:
+                                    for feature in tomogram.features:
+                                        field.addItem(feature.meta.name)
+                        else:
+                            field = QLineEdit(str(default_value))
                     
                     self.scroll_layout.addRow(label, field)
+
+                # Ensure the widgets are updated to avoid event filter issues
+                self.scroll_content.update()
         except Exception as e:
             print(f"Error updating solution args: {e}")
 
@@ -150,7 +172,7 @@ class CellCanvasWidget(QWidget):
 
 def main():
     viewer = napari.Viewer()
-    widget = CellCanvasWidget("/Users/kharrington/Data/copick/cellcanvas_server/local_sshOverlay_localStatic.json")
+    widget = CellCanvasWidget()
     viewer.window.add_dock_widget(widget, area='right')
     napari.run()
 
