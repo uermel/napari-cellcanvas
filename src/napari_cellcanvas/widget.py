@@ -1,7 +1,7 @@
 import napari
 from qtpy.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QComboBox, QLabel, 
                             QLineEdit, QFormLayout, QScrollArea, QTreeWidget, QTreeWidgetItem,
-                            QHBoxLayout, QMenu, QAction, Q)
+                            QHBoxLayout, QMenu, QAction)
 from qtpy.QtCore import Qt
 import requests
 import copick
