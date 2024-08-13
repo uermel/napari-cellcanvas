@@ -2,12 +2,37 @@ import napari
 import numpy as np
 from qtpy.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QComboBox, QLabel, 
                             QLineEdit, QFormLayout, QScrollArea, QTreeWidget, QTreeWidgetItem,
-                            QHBoxLayout, QMenu, QAction, QSpinBox)
+                            QHBoxLayout, QMenu, QAction, QSpinBox, QCheckBox, QListWidget,
+                            QListWidgetItem)
 from qtpy.QtCore import Qt
 import requests
 import copick
 import zarr
 from napari.utils import DirectLabelColormap
+
+class MultiSelectComboBox(QComboBox):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setView(QListWidget(self))
+        self.setEditable(True)
+
+    def addItems(self, items):
+        for item in items:
+            list_item = QListWidgetItem(item)
+            list_item.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
+            list_item.setCheckState(Qt.Unchecked)
+            self.view().addItem(list_item)
+
+    def selectedItems(self):
+        selected = []
+        for index in range(self.view().count()):
+            item = self.view().item(index)
+            if item.checkState() == Qt.Checked:
+                selected.append(item.text())
+        return selected
+
+    def currentText(self):
+        return ", ".join(self.selectedItems())
 
 class CellCanvasWidget(QWidget):
     def __init__(self, viewer=None, copick_config_path="/Users/kharrington/Data/copick/cellcanvas_server/local_sshOverlay_localStatic.json", hostname="localhost", port=8082, parent=None):
@@ -460,6 +485,8 @@ class CellCanvasWidget(QWidget):
         selected_run = self.run_dropdown.currentText()
         selected_solution = self.solution_dropdown.currentText()
 
+        default_value = ""
+        
         if not selected_solution:
             return
 
@@ -483,15 +510,15 @@ class CellCanvasWidget(QWidget):
 
                 for arg in args:
                     arg_name = arg.get('name')
-                    arg_type = arg.get('type')
-                    default_value = arg.get('default', '')
+
+                    # Suppress copick_config_path argument
+                    if arg_name == 'copick_config_path':
+                        continue
 
                     label = QLabel(arg_name)
 
-                    # Check if the parameter should be freeform or dropdown
-                    if arg_name == 'copick_config_path':
-                        field = QLineEdit(str(self.copick_config_path))
-                    elif catalog in freeform_conditions and name in freeform_conditions[catalog] and arg_name in freeform_conditions[catalog][name]:
+                    # Check if the argument should be freeform
+                    if catalog in freeform_conditions and name in freeform_conditions[catalog] and arg_name in freeform_conditions[catalog][name]:
                         field = QLineEdit(str(default_value))
                     else:
                         if arg_name == 'run_name':
@@ -516,26 +543,39 @@ class CellCanvasWidget(QWidget):
                                 for tomogram in voxel_spacing.tomograms:
                                     for feature in tomogram.features:
                                         field.addItem(feature.meta.name)
-                            if arg_name == 'feature_names':
-                                # This is a multicheckbox
-                                field.setInsertPolicy(QComboBox.InsertAtTop)
-                        elif arg_name in ['painting_segmentation_names']:
-                            field = QComboBox()
-                            field.setEditable(True)
+                        elif arg_name == 'painting_segmentation_names':
+                            field = MultiSelectComboBox()
                             run = self.root.get_run(selected_run)
                             for voxel_spacing in run.voxel_spacings:
                                 for segmentation in voxel_spacing.run.get_segmentations(voxel_spacing.meta.voxel_size):
                                     field.addItem(segmentation.meta.name)
-                            field.setInsertPolicy(QComboBox.InsertAtTop)
-                        elif arg_name in ['train_run_names', 'val_run_names']:
-                            field = QComboBox()
-                            field.setEditable(True)
+                        elif arg_name in ['train_run_names', 'val_run_names', 'run_names']:
+                            field = MultiSelectComboBox()
                             for run in self.root.runs:
                                 field.addItem(run.meta.name)
-                            field.setInsertPolicy(QComboBox.InsertAtTop)
+                        elif arg_name == 'feature_types':
+                            field = MultiSelectComboBox()
+                            run = self.root.get_run(selected_run)
+                            for voxel_spacing in run.voxel_spacings:
+                                for tomogram in voxel_spacing.tomograms:
+                                    for feature in tomogram.features:
+                                        field.addItem(feature.meta.name)
+                        elif arg_name in ['user_id', 'session_id']:
+                            field = QComboBox()
+                            for pick in self.root.runs[0].picks:  # Assuming all runs have similar user_ids and session_ids
+                                if arg_name == 'user_id':
+                                    field.addItem(pick.meta.user_id)
+                                elif arg_name == 'session_id':
+                                    field.addItem(pick.meta.session_id)
                         elif arg_name == 'model_path':
                             field = QComboBox()
                             self.populate_model_dropdown(field)
+                        elif arg_name == 'segmentation_name':
+                            field = QComboBox()
+                            run = self.root.get_run(selected_run)
+                            for voxel_spacing in run.voxel_spacings:
+                                for segmentation in voxel_spacing.run.get_segmentations(voxel_spacing.meta.voxel_size):
+                                    field.addItem(segmentation.meta.name)
                         else:
                             field = QLineEdit(str(default_value))
 
@@ -545,7 +585,7 @@ class CellCanvasWidget(QWidget):
                 self.scroll_content.update()
         except Exception as e:
             print(f"Error updating solution args: {e}")
-
+            
     def run_solution(self):
         selected_solution = self.solution_dropdown.currentText()
         if not selected_solution:
