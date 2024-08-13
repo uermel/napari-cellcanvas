@@ -196,7 +196,7 @@ class CellCanvasWidget(QWidget):
         # )
 
     def load_segmentation(self, segmentation):
-        zarr_data = zarr.open(segmentation.zarr().path, "r")
+        zarr_data = zarr.open(segmentation.zarr(), "a")
         if "data" in zarr_data:
             data = zarr_data["data"]
         else:
@@ -327,7 +327,7 @@ class CellCanvasWidget(QWidget):
         layout.addRow("Session ID:", session_input)
 
         user_input = QLineEdit(widget)
-        user_input.setText("napariCopick")
+        user_input.setText("napariCellcanvas")
         layout.addRow("User ID:", user_input)
 
         voxel_size_input = QComboBox(widget)
@@ -393,7 +393,7 @@ class CellCanvasWidget(QWidget):
             user_id=user_id,
         )
 
-        tomo = zarr.open(run.voxel_spacings[0].tomograms[0].zarr().path, "r")[
+        tomo = zarr.open(run.voxel_spacings[0].tomograms[0].zarr(), "r")[
             "0"
         ]
 
@@ -401,7 +401,7 @@ class CellCanvasWidget(QWidget):
         dtype = np.int32
 
         # Create an empty Zarr array for the segmentation
-        zarr_file = zarr.open(seg.zarr().path, mode="w")
+        zarr_file = zarr.open(seg.zarr(), mode="w")
         zarr_file.create_dataset(
             "data",
             shape=shape,
