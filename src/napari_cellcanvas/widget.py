@@ -426,7 +426,6 @@ class CellCanvasWidget(QWidget):
         self.root = copick.from_file(self.copick_config_path)
         self.populate_tree()
 
-
     def populate_solution_dropdown(self):
         self.solution_dropdown.clear()
         try:
@@ -438,6 +437,18 @@ class CellCanvasWidget(QWidget):
         except Exception as e:
             print(f"Error fetching solutions: {e}")
 
+    def populate_model_dropdown(self, combobox):
+        try:
+            response = requests.get(f"http://{self.hostname}:{self.port}/models")
+            if response.status_code == 200:
+                model_list = response.json().get('models', [])
+                for model_name in model_list:
+                    combobox.addItem(model_name)
+            else:
+                print(f"Failed to fetch models. Status code: {response.status_code}")
+        except Exception as e:
+            print(f"Error fetching models: {e}")
+            
     def update_solution_args(self):
         # Clear existing widgets
         for i in reversed(range(self.scroll_layout.count())): 
@@ -445,10 +456,10 @@ class CellCanvasWidget(QWidget):
             if widget is not None:
                 widget.deleteLater()  # Ensures the widget is fully cleaned up
                 self.scroll_layout.removeWidget(widget)
-        
+
         selected_run = self.run_dropdown.currentText()
         selected_solution = self.solution_dropdown.currentText()
-        
+
         if not selected_solution:
             return
 
@@ -460,6 +471,7 @@ class CellCanvasWidget(QWidget):
                 "generate-pixel-embedding": ["embedding_name"],
                 "generate-tomogram": ["run_name"],
                 "generate-skimage-features": ["feature_type"],
+                "generate-torch-basic-features": ["feature_type"],
             }
         }
 
@@ -468,14 +480,14 @@ class CellCanvasWidget(QWidget):
             if response.status_code == 200:
                 solution_info = response.json().get('info', {})
                 args = solution_info.get('args', [])
-                
+
                 for arg in args:
                     arg_name = arg.get('name')
                     arg_type = arg.get('type')
                     default_value = arg.get('default', '')
-                    
+
                     label = QLabel(arg_name)
-                    
+
                     # Check if the parameter should be freeform or dropdown
                     if arg_name == 'copick_config_path':
                         field = QLineEdit(str(self.copick_config_path))
@@ -497,16 +509,36 @@ class CellCanvasWidget(QWidget):
                             run = self.root.get_run(selected_run)
                             for tomogram in run.voxel_spacings[0].tomograms:
                                 field.addItem(tomogram.meta.tomo_type)
-                        elif arg_name in ['embedding_name', 'feature_type']:
+                        elif arg_name in ['embedding_name', 'feature_type', 'feature_names']:
                             field = QComboBox()
                             run = self.root.get_run(selected_run)
                             for voxel_spacing in run.voxel_spacings:
                                 for tomogram in voxel_spacing.tomograms:
                                     for feature in tomogram.features:
                                         field.addItem(feature.meta.name)
+                            if arg_name == 'feature_names':
+                                # This is a multicheckbox
+                                field.setInsertPolicy(QComboBox.InsertAtTop)
+                        elif arg_name in ['painting_segmentation_names']:
+                            field = QComboBox()
+                            field.setEditable(True)
+                            run = self.root.get_run(selected_run)
+                            for voxel_spacing in run.voxel_spacings:
+                                for segmentation in voxel_spacing.run.get_segmentations(voxel_spacing.meta.voxel_size):
+                                    field.addItem(segmentation.meta.name)
+                            field.setInsertPolicy(QComboBox.InsertAtTop)
+                        elif arg_name in ['train_run_names', 'val_run_names']:
+                            field = QComboBox()
+                            field.setEditable(True)
+                            for run in self.root.runs:
+                                field.addItem(run.meta.name)
+                            field.setInsertPolicy(QComboBox.InsertAtTop)
+                        elif arg_name == 'model_path':
+                            field = QComboBox()
+                            self.populate_model_dropdown(field)
                         else:
                             field = QLineEdit(str(default_value))
-                    
+
                     self.scroll_layout.addRow(label, field)
 
                 # Ensure the widgets are updated to avoid event filter issues
