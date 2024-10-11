@@ -542,7 +542,7 @@ class CellCanvasWidget(QWidget):
                             for voxel_spacing in run.voxel_spacings:
                                 for tomogram in voxel_spacing.tomograms:
                                     for feature in tomogram.features:
-                                        field.addItem(feature.meta.name)
+                                        field.addItem(feature.meta.feature_type)
                         elif arg_name == 'painting_segmentation_names':
                             field = MultiSelectComboBox()
                             run = self.root.get_run(selected_run)
@@ -559,7 +559,7 @@ class CellCanvasWidget(QWidget):
                             for voxel_spacing in run.voxel_spacings:
                                 for tomogram in voxel_spacing.tomograms:
                                     for feature in tomogram.features:
-                                        field.addItem(feature.meta.name)
+                                        field.addItem(feature.meta.feature_type)
                         elif arg_name in ['user_id', 'session_id']:
                             field = QComboBox()
                             for pick in self.root.runs[0].picks:  # Assuming all runs have similar user_ids and session_ids
